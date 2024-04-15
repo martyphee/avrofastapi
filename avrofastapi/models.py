@@ -3,10 +3,11 @@ from uuid import UUID
 
 from pydantic import BaseModel, conbytes, validator
 
+from avrofastapi.handshake import ConstrainedBytes
 from avrofastapi.schema import AvroInt
 
 
-class RefId(conbytes(max_length=16, min_length=16)):
+class RefId(ConstrainedBytes):
     pass
 
 

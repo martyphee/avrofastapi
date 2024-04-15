@@ -1,11 +1,25 @@
 from enum import Enum
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Union, Annotated, Any
 
-from pydantic import BaseModel, conbytes, validator
+import annotated_types
+from pydantic import BaseModel, validator, Strict, GetCoreSchemaHandler, conbytes
+from pydantic_core import core_schema
 
 
-class MD5(conbytes(min_length=16, max_length=16)):
+class ConstrainedBytes(Annotated[bytes, Strict(True), annotated_types.Len(16, 16)]):
+    @classmethod
+    def __get_pydantic_core_schema__(cls, source: Any, handler: GetCoreSchemaHandler
+                                     ) -> core_schema.CoreSchema:
+        return {"type": "bytes"}
+
+
+class MD5Orig(conbytes(min_length=16, max_length=16)):
     pass
+
+
+class MD5(ConstrainedBytes):
+    pass
+
 
 
 class HandshakeMatch(Enum):

@@ -1,3 +1,8 @@
+import annotated_types
+from pydantic_core import core_schema
+
+from avrofastapi.handshake import ConstrainedBytes
+
 try:
     from re import _pattern_type as Pattern
     from re import compile as re_compile
@@ -7,34 +12,35 @@ except ImportError:
 from datetime import date, datetime, time
 from decimal import Decimal
 from enum import Enum
-from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Type, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Type, Union, Annotated
 from uuid import UUID
 
 from avro.errors import AvroException
 from pydantic import (
     BaseModel,
-    ConstrainedBytes,
-    ConstrainedDecimal,
-    ConstrainedInt,
-    conint,
+    Strict, GetCoreSchemaHandler,
 )
 
 
-AvroInt: ConstrainedInt = conint(ge=-2147483648, le=2147483647)
+# AvroInt: ConstrainedInt = conint(ge=-2147483648, le=2147483647)
+AvroInt = Annotated[int, Strict(True), annotated_types.Interval(ge=-2147483648, le=2147483647)]
 _avro_name_format: Pattern = re_compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 class AvroFloat(float):
-    pass
+    @classmethod
+    def __get_pydantic_core_schema__(cls, source: Any, handler: GetCoreSchemaHandler
+                                     ) -> core_schema.CoreSchema:
+        return {"type": "float"}
 
 
 AvroSchema: Type = Union[str, Dict[str, Union["AvroSchema", int]], List["AvroSchema"]]
 
 
 def convert_schema(
-    model: Type[BaseModel],
-    error: bool = False,
-    conversions: Dict[type, Callable[[type], AvroSchema]] = {},
+        model: Type[BaseModel],
+        error: bool = False,
+        conversions: Dict[type, Callable[[type], AvroSchema]] = {},
 ) -> AvroSchema:
     generator: AvroSchemaGenerator = AvroSchemaGenerator(model, error, conversions)
     return generator.schema()
@@ -61,16 +67,10 @@ def get_name(model: Type) -> str:
         name += "_" + "_".join(list(map(get_name, model.__args__)))
 
     elif (
-        issubclass(model, ConstrainedBytes)
-        and model.__name__ == "ConstrainedBytesValue"
+            issubclass(model, ConstrainedBytes)
+            and model.__name__ == "ConstrainedBytesValue"
     ):
         name = "Bytes_" + str(model.max_length)
-
-    elif (
-        issubclass(model, ConstrainedDecimal)
-        and model.__name__ == "ConstrainedDecimalValue"
-    ):
-        name = f"Decimal_{model.max_digits}_{model.decimal_places}"
 
     else:
         name = model.__name__
@@ -87,9 +87,9 @@ def _validate_avro_namespace(namespace: str, parent_namespace: str = None):
     # break these into two different ifs for readability
     if parent_namespace and namespace != parent_namespace:
         if (
-            len(parent_namespace) >= len(namespace)
-            or not namespace.startswith(parent_namespace)
-            or namespace[len(parent_namespace)] != "."
+                len(parent_namespace) >= len(namespace)
+                or not namespace.startswith(parent_namespace)
+                or namespace[len(parent_namespace)] != "."
         ):
             raise AvroException(
                 f"the enclosing namespace, {parent_namespace}, must be a subpath of the namespace: {namespace}"
@@ -99,10 +99,10 @@ def _validate_avro_namespace(namespace: str, parent_namespace: str = None):
 class AvroSchemaGenerator:
 
     def __init__(
-        self,
-        model: Type[BaseModel],
-        error: bool = False,
-        conversions: Dict[type, Callable[[type], AvroSchema]] = {},
+            self,
+            model: Type[BaseModel],
+            error: bool = False,
+            conversions: Dict[type, Callable[[type], AvroSchema]] = {},
     ) -> None:
         """
         :param model: the pydantic model to generate a schema for
@@ -135,15 +135,15 @@ class AvroSchemaGenerator:
         return schema
 
     def _convert_array(
-        self: "AvroSchemaGenerator", model: Type[Iterable[Any]]
+            self: "AvroSchemaGenerator", model: Type[Iterable[Any]]
     ) -> Dict[str, AvroSchema]:
         object_type: AvroSchema = self._get_type(model.__args__[0])
 
         # TODO: does this do anything?
         if (
-            isinstance(object_type, dict)
-            and isinstance(object_type.get("type"), dict)
-            and object_type["type"].get("logicalType") is not None
+                isinstance(object_type, dict)
+                and isinstance(object_type.get("type"), dict)
+                and object_type["type"].get("logicalType") is not None
         ):
             object_type = object_type["type"]
 
@@ -153,7 +153,7 @@ class AvroSchemaGenerator:
         }
 
     def _convert_object(
-        self: "AvroSchemaGenerator", model: Type[BaseModel]
+            self: "AvroSchemaGenerator", model: Type[BaseModel]
     ) -> Dict[str, Union[str, List[AvroSchema]]]:
         sub_namespace: Optional[str] = getattr(model, "__namespace__", None)
         parent_namespace: str = self.namespace
@@ -169,10 +169,10 @@ class AvroSchemaGenerator:
             f: AvroSchema = {"name": name}
 
             if (
-                getattr(submodel, "__origin__", None) is Union
-                and len(submodel.__args__) == 2
-                and type(None) in submodel.__args__
-                and field.default is None
+                    getattr(submodel, "__origin__", None) is Union
+                    and len(submodel.__args__) == 2
+                    and type(None) in submodel.__args__
+                    and field.default is None
             ):
                 # this is a special case where the field is nullable and the default value is null, but the actual value can be omitted from the schema
                 # we rearrange Optional[Type] and Union[Type, None] to Union[None, Type] so that null becomes the default type and the 'default' key is unnecessary
@@ -206,12 +206,12 @@ class AvroSchemaGenerator:
         return schema
 
     def _convert_union(
-        self: "AvroSchemaGenerator", model: Type[Union[Any, Any]]
+            self: "AvroSchemaGenerator", model: Type[Union[Any, Any]]
     ) -> List[AvroSchema]:
         return list(map(self._get_type, model.__args__))
 
     def _convert_enum(
-        self: "AvroSchemaGenerator", model: Type[Enum]
+            self: "AvroSchemaGenerator", model: Type[Enum]
     ) -> Dict[str, Union[str, List[str]]]:
         name: str = get_name(model)
         _validate_avro_name(name)
@@ -239,7 +239,7 @@ class AvroSchemaGenerator:
         return schema
 
     def _convert_bytes(
-        self: "AvroSchemaGenerator", model: Type[ConstrainedBytes]
+            self: "AvroSchemaGenerator", model: Type[ConstrainedBytes]
     ) -> Dict[str, Union[str, int]]:
         if model.min_length == model.max_length and model.max_length:
             schema: Dict[str, Union[str, int]] = {
@@ -259,7 +259,7 @@ class AvroSchemaGenerator:
         return "bytes"
 
     def _convert_map(
-        self: "AvroSchemaGenerator", model: Type[Dict[str, Any]]
+            self: "AvroSchemaGenerator", model: Type[Dict[str, Any]]
     ) -> Dict[str, AvroSchema]:
         if not hasattr(model, "__args__"):
             raise AvroException(
@@ -279,21 +279,6 @@ class AvroSchemaGenerator:
             "Support for unconstrained decimals is not possible due to the nature of avro decimals. please use pydantic.condecimal(max_digits=int, decimal_places=int)"
         )
 
-    def _convert_condecimal(
-        self: "AvroSchemaGenerator", model: Type[ConstrainedDecimal]
-    ) -> Dict[str, Union[str, int]]:
-        if not model.max_digits or model.decimal_places is None:
-            raise AvroException(
-                "Decimal attributes max_digits and decimal_places must be provided in order to map to avro decimals"
-            )
-
-        return {
-            "type": "bytes",
-            "logicalType": "decimal",
-            "precision": model.max_digits,
-            "scale": model.decimal_places,
-        }
-
     _conversions_ = {
         BaseModel: _convert_object,
         Union: _convert_union,
@@ -303,7 +288,6 @@ class AvroSchemaGenerator:
         Dict: _convert_map,
         dict: _convert_map,
         Decimal: _convert_decimal,
-        ConstrainedDecimal: _convert_condecimal,
         bool: "boolean",
         AvroInt: "int",
         int: "long",
