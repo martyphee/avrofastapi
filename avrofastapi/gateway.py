@@ -18,7 +18,6 @@ from avrofastapi.handshake import (
     HandshakeResponse,
 )
 from avrofastapi.models import Error, ValidationError
-from avrofastapi.repo import name
 from avrofastapi.schema import convert_schema, get_name
 from avrofastapi.serialization import (
     AvroDeserializer,
